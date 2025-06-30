@@ -3,8 +3,8 @@ library(mclust)
 library(scales)
 library(R.matlab)
 
-algorithms = c("nmf", "hc", "diana", "km", "pam", "ap", "sc",
-               "gmm", "block", "cmeans", "hdbscan")
+algorithms = c("diana", "km", "pam", "ap", "sc",
+               "gmm",  "cmeans", "hdbscan")
 
 
 algorithms = c("gmm", "pam")
@@ -207,8 +207,8 @@ for (alpha in seq(0, 1, by = 0.1)) {
 
   result <- get_best_clustering(data = data$x[,top_features],
                                 nk = 5,
-                                algorithms = "gmm",
-                                cons.funs = "majority")
+                                algorithms = "diana",
+                                cons.funs = "LCE")
   print(paste(
     alpha,
     num_features,
@@ -274,8 +274,8 @@ for (alpha in seq(0, 1, by = 0.1)) {
 
   result <- get_best_clustering(data = data$x[,top_features],
                                 nk = 3,
-                                algorithms = "gmm",
-                                cons.funs = "LCE")
+                                algorithms = "hc",
+                                cons.funs = "CSPA")
   print(paste(
     alpha,
     num_features,
