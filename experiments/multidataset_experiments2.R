@@ -271,7 +271,84 @@ summarize_top_metrics <- function(experiments, top_n = 10) {
 }
 
 
-get_best_ensemble_internal_metrics  <- function(experiment_ids,
+get_best_ensemble_internal_metrics <- function(experiment_ids, data, nk, seed = 101) {
+  # Load all experiment data
+  experiments_data_all <- load_experiments()
+
+  # Filter dataset to only include the experiments of interest
+  filtered_df <- experiments_data_all[
+    experiments_data_all$experiment_id %in% experiment_ids,
+  ]
+
+  # Create a unique identifier for each clustering + consensus combination
+  filtered_df$combo_method <- paste0(
+    filtered_df$clustering_method, "+", filtered_df$consensus_method
+  )
+
+  # Get all distinct clustering methods
+  clustering_methods <- unique(filtered_df$clustering_method)
+
+  # Initialize objects to store best combinations and their corresponding experiment IDs
+  best_combos <- list()
+  combo_to_experiment_id <- list()
+
+  set.seed(seed)
+
+  # Iterate over each clustering method
+  for (cm in clustering_methods) {
+    # Subset experiments for the current clustering method
+    subset_df <- filtered_df[filtered_df$clustering_method == cm, ]
+    cc_data_list <- list()
+
+    # Convert each experiment's labels into the format expected by consensus_evaluate
+    for (i in seq_len(nrow(subset_df))) {
+      combo <- paste0(subset_df$clustering_method[i], "+", subset_df$consensus_method[i])
+      labels <- as.integer(subset_df$labels_clustering[[i]])
+      num_elements <- length(labels)
+
+      cc_data <- array(
+        labels,
+        dim = c(num_elements, 1, 1, 1),
+        dimnames = list(NULL, "R1", combo, as.character(nk))
+      )
+
+      cc_data_list[[combo]] <- cc_data
+    }
+
+    # Evaluate internal metrics for all combinations of this clustering method
+    result <- do.call(consensus_evaluate, c(
+      list(data), cc_data_list,
+      list(n = 1, k.method = nk, trim = TRUE, reweigh = TRUE)
+    ))
+
+    # Get the best-performing combination
+    best_combo <- result$trim.obj$alg.keep
+    best_combos[[best_combo]] <- cc_data_list[[best_combo]]
+
+    # Record the corresponding experiment_id for this best combo
+    best_id <- subset_df$experiment_id[subset_df$combo_method == best_combo][1]
+    combo_to_experiment_id[[best_combo]] <- best_id
+  }
+
+  # Run a final evaluation on the best combinations
+  final_result <- do.call(consensus_evaluate, c(
+    list(data), best_combos,
+    list(n = 1, k.method = nk, trim = TRUE, reweigh = TRUE)
+  ))
+
+  # Identify the final winning combination and its experiment ID
+  final_combo <- final_result$trim.obj$alg.keep
+  final_experiment_id <- combo_to_experiment_id[[final_combo]]
+
+  # Attach that experiment ID to the final result
+  final_result$best_experiment_id <- final_experiment_id
+
+  return(final_result)
+}
+
+
+
+get_best_ensemble_internal_metrics_old  <- function(experiment_ids,
                                                   data,
                                                   nk,
                                                   seed = 101) {
@@ -289,6 +366,7 @@ get_best_ensemble_internal_metrics  <- function(experiment_ids,
 
   clustering_methods <- unique(filtered_df$clustering_method)
   best_combos <- list()
+  combo_to_experiment_id <- list()
 
   set.seed(seed)
 
