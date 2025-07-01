@@ -10,7 +10,7 @@ UFS_Methods <- list(
 algorithms = c("nmf", "hc", "diana", "km", "pam", "ap", "sc",
                "gmm", "block", "som", "cmeans", "hdbscan")
 
-algorithms = c("gmm")
+# algorithms = c("gmm")
 
 
 
@@ -563,180 +563,64 @@ compare_experiments(298,358)
 # Experiment B | Mean: 0.1556 | SD: 0.0184
 # Mann-Whitney U p-value (A > B): 2.235e-08
 
+seed = 101
 k = 5
-B <- ceiling(length(top_features) / 100) * 10
-B <- min(B, 100)
-print(sprintf("%d rows, %d features, %d top features, %d random projections, %d clusters",
-              nrow(data$x), ncol(data$x), length(top_features), B, k))
-
-print("Selecting clustering and consensus methods")
-seed <- 101
-
-
-for (alg in algorithms) {
-  print(alg)
-
-  RPClu_results <- RPClu_parallel(data$x[,top_features],
-                                      clust_fun = alg,
-                                      g = k,
-                                      B = B,
-                                      seed = seed)
+# > result <- RPGMMClu_parallel(data$x[,top_features],g=k,B=200,B.star=20, seed = 100)
+# > adjustedRandIndex(result$ensemble$label.vec, data$y)
+# [1] 0.6776978
+# > result <- RPGMMClu_parallel(data$x,g=k,B=200,B.star=20, seed = 100)
+# > adjustedRandIndex(result$ensemble$label.vec, data$y)
+# [1] 0.338904
 
 
-    print(mean(RPClu_results$ari))
-  }
+results_dice = dice(data = data$x[,top_features],
+                    nk = k,
+                    algorithms = "gmm",
+                    evaluate = TRUE,
+                    seed = seed,
+                    seed.data = seed,
+                    progress = FALSE,
+                    verbose = FALSE)
 
-E = as.matrix(RPClu_results$clusterings)
+adjustedRandIndex(results_dice$clusters[, 5], data$y)
 
-consensus_labels <- calculate_consensus_labels(E,k,as.integer(data$y))
+results_dice = dice(data = data$x,
+                    nk = k,
+                    algorithms = "gmm",
+                    evaluate = TRUE,
+                    seed = seed,
+                    seed.data = seed,
+                    progress = FALSE,
+                    verbose = FALSE)
 
-names(consensus_labels)
+adjustedRandIndex(results_dice$clusters[, 5], data$y)
+# [1] 0.1807935
 
-cc_data_list <- list()
+results_dice = dice(data = data$x,
+                    nk = k,
+                    algorithms = algorithms,
+                    evaluate = TRUE,
+                    seed = seed,
+                    seed.data = seed,
+                    progress = FALSE,
+                    verbose = FALSE)
 
-for (method in names(consensus_labels)) {
-  num_labels <- length(consensus_labels[[method]])
-  cc_data <- array(consensus_labels[[method]], dim = c(num_labels, 1, 1, 1))
-  dimnames(cc_data) <- list(
-    NULL,
-    "R1",
-    method,
-    as.character(k)
-  )
-  cc_data_list[[method]] <- cc_data
-}
+adjustedRandIndex(results_dice$clusters[, 5], data$y)
+# 0.2468646
 
+results_dice = dice(data = data$x[,top_features],
+                    nk = k,
+                    algorithms = "gmm",
+                    evaluate = TRUE,
+                    seed = seed,
+                    seed.data = seed,
+                    progress = FALSE,
+                    verbose = FALSE)
 
-result <- do.call(consensus_evaluate, c(list(data$x), cc_data_list, list(n = 5, trim = TRUE)))
-best_consensus_alg <- result$trim.obj$alg.keep
-best_clustering <- as.vector(result$trim.obj$E.new[[1]])
-
-
-for (j in colnames(dice.obj$clusters)) {
-  column <- dice.obj$clusters[, j]
-  cat("Method:", j, "\n")
-  num_labels <- length(column)
-  cc_data <- array(column, dim = c(num_labels, 1, 1, 1))
-  row_names <- rownames(column)
-  dimnames(cc_data) <- list(
-    row_names,
-    "R1",
-    j,
-    as.character(nk)
-  )
-  cc_data_list[[j]] <- cc_data
-}
-
-# Load all saved experiments
-experiments_data_all <- load_experiments()
-
-# Filter to include only the experiments in the relevant ID range
-experiment_filter <- experiments_data_all$experiment_id >= 1606 &
-  experiments_data_all$experiment_id <= 1655
-experiments_dataset <- experiments_data_all[experiment_filter, ]
-experiments_dataset[,c("clustering_method", "consensus_method","labels_clustering")]
-
-experiments_dataset$combo_method <- paste0(
-  experiments_dataset$clustering_method, "+",
-  experiments_dataset$consensus_method
-)
-
-consensus_labels <- split(experiments_dataset$labels_clustering,
-                          experiments_dataset$combo_method)
-
-# Asegúrate de que cada elemento sea un vector de etiquetas
-consensus_labels <- lapply(consensus_labels, function(x) {
-  lapply(x, as.integer)  # o as.vector, según el tipo de datos
-})
-
-cc_data_list <- list()
-
-for (combo_name in names(consensus_labels)) {
-  label_list <- consensus_labels[[combo_name]]
-  num_elements <- length(label_list[[1]])
-
-  # Crear array 4D: [elementos, réplica, run, algoritmo]
-  cc_data <- array(
-    unlist(label_list),
-    dim = c(num_elements, 1, 1, 1)
-  )
-
-  dimnames(cc_data) <- list(
-    NULL,
-    "R1",
-    combo_name,
-    as.character(k)
-  )
-
-  cc_data_list[[combo_name]] <- cc_data
-}
-
-result <- do.call(consensus_evaluate, c(list(data$x), cc_data_list,
-                                        list(n = 1, k.method= k, trim = TRUE, reweigh=TRUE)))
-best_consensus_alg <- result$trim.obj$alg.keep
+adjustedRandIndex(results_dice$clusters[, 5], data$y)
 
 
-#####
-# Load all saved experiments
-set.seed(111777)
-experiments_data_all <- load_experiments()
-
-# Filter to include only experiments with IDs in the specified range
-experiment_filter <- experiments_data_all$experiment_id >= 1606 &
-  experiments_data_all$experiment_id <= 1655
-experiments_dataset <- experiments_data_all[experiment_filter, ]
-
-# Create combined method name: clustering_method + consensus_method
-experiments_dataset$combo_method <- paste0(
-  experiments_dataset$clustering_method, "+",
-  experiments_dataset$consensus_method
-)
-
-# Get best consensus_method for each clustering_method
-clustering_methods <- unique(experiments_dataset$clustering_method)
-
-best_combos <- list()
-
-for (cm in unique(experiments_dataset$clustering_method)) {
-  subset_df <- experiments_dataset[experiments_dataset$clustering_method == cm, ]
-
-  cc_data_list <- list()
-
-  for (i in seq_len(nrow(subset_df))) {
-    combo <- paste0(subset_df$clustering_method[i], "+", subset_df$consensus_method[i])
-    labels <- as.integer(subset_df$labels_clustering[[i]])
-    num_elements <- length(labels)
-
-    cc_data <- array(
-      labels,
-      dim = c(num_elements, 1, 1, 1),
-      dimnames = list(NULL, "R1", combo, as.character(k))
-    )
-
-    cc_data_list[[combo]] <- cc_data
-  }
-
-  result <- do.call(consensus_evaluate, c(
-    list(data$x), cc_data_list,
-    list(n = 1, k.method = k, trim = TRUE, reweigh = TRUE)
-  ))
-
-  best_combo <- result$trim.obj$alg.keep
-  best_combos[[best_combo]] <- cc_data_list[[best_combo]]
-}
-
-
-# Evaluate across the best consensus+clustering combinations
-final_result <- do.call(consensus_evaluate, c(
-  list(data$x), best_combos,
-  list(n = 1, k.method = k, trim = TRUE, reweigh = TRUE)
-))
-
-# Final best combination
-best_overall <- final_result$trim.obj$alg.keep
-
-
-########################################################
+rere########################################################
 ########################################################
 # lung_cancer
 ########################################################

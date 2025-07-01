@@ -182,7 +182,7 @@ RPGMMClu_parallel <- function(x, true.cl=NULL, g, d = NULL, c = 10, B = 1000, B.
     bic.nc <- 2 * loglik.nc - k * log(n)
 
     list(loglik.c=loglik.c, cl.m=cl.m, bic.c=bic.c, bic.nc=bic.nc, Bic=bic.c + bic.nc, Ari=if (!is.null(true.cl)) adjustedRandIndex(out$classification, true.cl) else NA)
-  })
+  }, future.seed = seed)
   plan(sequential)
   gc()
 
@@ -311,7 +311,11 @@ RPGMMClu_noens_parallel <- function(x, true.cl=NULL, g, d = NULL, c = 10, B = 10
   cl.ens.1 <- data.frame(cl.m[, order(Bic, decreasing=TRUE)[1:B.star]])
   cl.ens.1.2 <- lapply(cl.ens.1, function(x) as.cl_membership(x))
 
-  Ari.ens <- sapply(cl.ens.1, function(cl) adjustedRandIndex(cl, true.cl))
+  Ari.ens = NULL
+
+  if (!is.null(true.cl)) {
+    Ari.ens <- sapply(cl.ens.1, function(cl) adjustedRandIndex(cl, true.cl))
+  }
 
   individual <- list(label.vec = cl.ens.1, ari = Ari.ens, bic = Bic)
 
@@ -401,7 +405,11 @@ RPClu_parallel <- function(x,
   gc()
 
   clustering_matrix <- do.call(cbind, lapply(results, function(x) x$clustering))
-  ari_vec <- sapply(results, function(x) x$ari)
+
+  ari_vec = NULL
+  if (!is.null(true.cl)) {
+    ari_vec <- sapply(results, function(x) x$ari)
+  }
 
   return(list(clusterings = clustering_matrix, ari=ari_vec))
 }
