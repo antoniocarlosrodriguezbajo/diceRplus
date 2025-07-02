@@ -11,7 +11,7 @@ mean_abs_correlation <- function(data) {
   round(mean(abs(cor_mat[upper.tri(data)])),4)
 }
 
-get_best_top_features <- function(data, minimum=TRUE, range=c(0,0.5)) {
+get_best_top_features <- function(data) {
   # Start MATLAB server
   Matlab$startServer()
   matlab <- Matlab()
@@ -33,13 +33,9 @@ get_best_top_features <- function(data, minimum=TRUE, range=c(0,0.5)) {
   evaluate(matlab, "rng('default');")
   evaluate(matlab, "rng(42);")
 
-  if (minimum) {
-    num_top_features = 1e10
-  } else {
-    num_top_features = -1e10
-  }
+  num_top_features = 1e10
 
-  for (alpha in seq(range[1], range[2], by = 0.1)) {
+  for (alpha in seq(0, 0.5, by = 0.1)) {
 
     evaluate(matlab, "clear RANKED WEIGHT SUBSET WEIGHT_SUM WEIGHT_MEAN;")
 
@@ -57,13 +53,10 @@ get_best_top_features <- function(data, minimum=TRUE, range=c(0,0.5)) {
     print(alpha)
     print(num_features_alpha)
 
-    update_needed <- (minimum && num_features_alpha < num_top_features) ||
-      (!minimum && num_features_alpha > num_top_features)
-
-    if (update_needed) {
-      alpha_best <- alpha
-      top_features <- top_features_alpha
-      num_top_features <- num_features_alpha
+    if (num_features_alpha < num_top_features) {
+      alpha_best = alpha
+      top_features = top_features_alpha
+      num_top_features = num_features_alpha
     }
   }
 
@@ -323,8 +316,8 @@ run_RPClu_experiments <- function(data_all = data,
                                   dataset = dataset_name,
                                   top_features = top_features,
                                   nk = nk,
-                                  B = 500,
-                                  B.star = 50,
+                                  B = 100,
+                                  B.star = 10,
                                   UFS_method = "Inf-FS2020",
                                   alpha = 0.1,
                                   seed = 101) {
@@ -437,17 +430,16 @@ run_pipeline <- function(data,
                                          dataset = dataset_name,
                                          top_features = top_features,
                                          nk = nk,
-                                         B = 500,
-                                         B.star = 50,
+                                         B = 100,
+                                         B.star = 10,
                                          UFS_method = "Inf-FS2020",
-                                         alpha = alpha,
+                                         alpha = 0.1,
                                          seed = 101)
   print(experiment_id)
 
-
   return(list(best_experiment_UFS_id = best_experiment_UFS_id,
               best_experiment_NO_UFS_id = best_experiment_NO_UFS_id,
-              best_experiment_UFS_RPClu_id = experiment_id
+              best_experiment_RPClu = experiment_id
               ))
 }
 
@@ -485,10 +477,18 @@ result <- run_pipeline(data = data$x,
 
 exp_ids <- c(result$best_experiment_UFS_id,
              result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
+             result$best_experiment_RPClu)
 
 em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
 em$ari
+
+
+result <- evaluate_experiment_clusterings(
+  experiment_ids = c(265,287,298),
+  data = data$x,
+  nk = 5,
+  seed = 101
+)
 
 # "Best Clustering UFS: cmeans, Best Consensus: CSPA, Experiment id: 265"
 # "Best Clustering NO UFS: sc, Best Consensus: LCA, Experiment id: 287"
@@ -530,7 +530,7 @@ result <- run_pipeline(data = data$x,
 
 exp_ids <- c(result$best_experiment_UFS_id,
              result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
+             result$best_experiment_RPClu)
 
 em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
 em$ari
@@ -542,6 +542,48 @@ em$ari
 # > em$ari
 # [1] 0.7884032 0.8518607 1.0000000
 
+
+########################################################
+########################################################
+# lung_cancer
+########################################################
+########################################################
+
+data(lung_cancer)
+
+data <- lung_cancer
+
+mean(data$x)
+sd(data$x)
+
+mean_abs_correlation(data$x)
+#0.1467
+
+# UFS
+results_UFS <- get_best_top_features(data$x)
+
+result <- run_pipeline(data = data$x,
+             dataset_name = "Lung Cancer",
+             top_features = results_UFS$top_features,
+             nk = 5,
+             algorithms = algorithms,
+             UFS_method = "Inf-FS2020",
+             alpha = results_UFS$alpha_best,
+             n_reps=1,
+             seed=100)
+
+exp_ids <- c(result$best_experiment_UFS_id,
+             result$best_experiment_NO_UFS_id,
+             result$best_experiment_RPClu)
+em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
+em$ari
+
+# Best Clustering UFS: cmeans, Best Consensus: LCE, Experiment id: 368"
+# "Best Clustering NO UFS: pam, Best Consensus: CSPA, Experiment id: 397"
+# [1] "RPClu with UFS"
+# [1] 400
+# > em$ari
+# [1] 0.2092839 0.4814490 0.4013991
 
 ########################################################
 ########################################################
@@ -575,7 +617,7 @@ result <- run_pipeline(data = data$x,
              dataset_name = "warpPIE10P",
              top_features = results_UFS$top_features,
              nk = 10,
-             algorithms = algorithms,
+             algorithms = setdiff(algorithms, "ap"),
              UFS_method = "Inf-FS2020",
              alpha = results_UFS$alpha_best,
              n_reps=1,
@@ -583,154 +625,16 @@ result <- run_pipeline(data = data$x,
 
 exp_ids <- c(result$best_experiment_UFS_id,
              result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
+             result$best_experiment_RPClu)
 em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
 em$ari
 
-# "Best Clustering UFS: cmeans, Best Consensus: kmodes, Experiment id: 365"
-# "Best Clustering NO UFS: sc, Best Consensus: majority, Experiment id: 386"
+# "Best Clustering UFS: cmeans, Best Consensus: kmodes, Experiment id: 416"
+# "Best Clustering NO UFS: sc, Best Consensus: majority, Experiment id: 437"
 # [1] "RPClu with UFS"
-# [1] 400
+# [1] 451
 # > em$ari
 # [1] 0.1597852 0.1071034 0.5379900
-
-
-########################################################
-########################################################
-# ALLAML
-########################################################
-########################################################
-
-data(ALLAML)
-
-data <- ALLAML
-
-mean(data$x)
-sd(data$x)
-min(data$x)
-max(data$x)
-
-mean_abs_correlation(data$x)
-# 0.1643
-
-# UFS
-results_UFS <- get_best_top_features(data$x)
-
-result <- run_pipeline(data = data$x,
-                       dataset_name = "ALLAML",
-                       top_features = results_UFS$top_features,
-                       nk = 2,
-                       algorithms = setdiff(algorithms, "pam"),
-                       UFS_method = "Inf-FS2020",
-                       alpha = results_UFS$alpha_best,
-                       n_reps=1,
-                       seed=100)
-
-exp_ids <- c(result$best_experiment_UFS_id,
-             result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
-em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
-em$ari
-
-# "Best Clustering UFS: cmeans, Best Consensus: LCE, Experiment id: 419"
-# "Best Clustering NO UFS: cmeans, Best Consensus: majority, Experiment id: 437"
-# [1] "RPClu with UFS"
-# [1] 441
-#
-# em$ari
-# [1]  0.02432598  0.23640287 -0.01293935
-
-
-
-########################################################
-########################################################
-# Lung Cancer
-########################################################
-########################################################
-
-data(lung_cancer)
-
-data <- lung_cancer
-
-mean(data$x)
-sd(data$x)
-min(data$x)
-max(data$x)
-
-mean_abs_correlation(data$x)
-# 0.1467
-
-# UFS
-results_UFS <- get_best_top_features(data$x)
-
-result <- run_pipeline(data = data$x,
-                       dataset_name = "Lung Cancer",
-                       top_features = results_UFS$top_features,
-                       nk = 5,
-                       algorithms = algorithms,
-                       UFS_method = "Inf-FS2020",
-                       alpha = results_UFS$alpha_best,
-                       n_reps=1,
-                       seed=100)
-
-exp_ids <- c(result$best_experiment_UFS_id,
-             result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
-em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
-em$ari
-
-# "Best Clustering NO UFS: pam, Best Consensus: CSPA, Experiment id: 489"
-# Best Clustering NO UFS:pam, Best Consensus:CSPA, Experiment id:489"
-# [1] "RPClu with UFS"
-# [1] 492
-# > em$ari
-# [1] 0.2092839 0.4814490 0.4013991
-
-
-########################################################
-########################################################
-# Prostate GE
-########################################################
-########################################################
-
-data(prostate_ge)
-
-data <- prostate_ge
-
-mean(data$x)
-sd(data$x)
-min(data$x)
-max(data$x)
-
-mean_abs_correlation(data$x)
-#  0.4118
-
-# UFS
-results_UFS <- get_best_top_features(data$x)
-
-result <- run_pipeline(data = data$x,
-                       dataset_name = "Prostate GE",
-                       top_features = results_UFS$top_features,
-                       nk = 2,
-                       algorithms = algorithms,
-                       UFS_method = "Inf-FS2020",
-                       alpha = results_UFS$alpha_best,
-                       n_reps=1,
-                       seed=100)
-
-exp_ids <- c(result$best_experiment_UFS_id,
-             result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
-em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
-em$ari
-
-# "Best Clustering UFS: gmm, Best Consensus: CSPA, Experiment id: 500"
-# "Best Clustering NO UFS: sc, Best Consensus: kmodes, Experiment id: 528"
-# [1] "RPClu with UFS"
-# [1] 543
-#
-# > em$ari
-# [1] 0.0007846037 0.0305681440 0.0157535120
 
 
 
@@ -756,91 +660,43 @@ sd(data$x)
 min(data$x)
 max(data$x)
 
+
 mean_abs_correlation(data$x)
-#  0.1453
+# 0.1643
 
 # UFS
 results_UFS <- get_best_top_features(data$x)
 
 result <- run_pipeline(data = data$x,
-                       dataset_name = "TOX_171",
-                       top_features = results_UFS$top_features,
-                       nk = 4,
-                       algorithms = algorithms,
-                       UFS_method = "Inf-FS2020",
-                       alpha = results_UFS$alpha_best,
-                       n_reps=1,
-                       seed=100)
+             dataset_name = "TOX_171",
+             top_features = results_UFS$top_features,
+             nk = 4,
+             algorithms = algorithms,
+             UFS_method = "Inf-FS2020",
+             alpha = results_UFS$alpha_best,
+             n_reps=1,
+             seed=100)
 
 exp_ids <- c(result$best_experiment_UFS_id,
              result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
+             result$best_experiment_RPClu)
 em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
 em$ari
 
-# [1] "Best Clustering UFS: gmm, Best Consensus: kmodes, Experiment id: 549"
-# [1] "Best Clustering NO UFS: km, Best Consensus: LCE, Experiment id: 572"
-# 1] "RPClu with UFS"
-# [1] 594
-# > em$ari
-# [1] 0.15973709 0.23570909 0.08408656
+"Best Clustering UFS: gmm, Best Consensus: kmodes, Experiment id: 457"
+"Best Clustering NO UFS: km, Best Consensus: LCE, Experiment id: 480"
+[1] "RPClu with UFS"
+[1] 502
 
 ########################################################
 ########################################################
-# GLIOMA
+# leukemia
 ########################################################
 ########################################################
 
-data(GLIOMA)
+data(leukemia)
 
-data <- GLIOMA
-
-mean(data$x)
-sd(data$x)
-min(data$x)
-max(data$x)
-
-
-mean_abs_correlation(data$x)
-# [1] 0.3441
-
-# UFS
-results_UFS <- get_best_top_features(data$x)
-
-result <- run_pipeline(data = data$x,
-                       dataset_name = "GLIOMA",
-                       top_features = results_UFS$top_features,
-                       nk = 4,
-                       algorithms = algorithms,
-                       UFS_method = "Inf-FS2020",
-                       alpha = results_UFS$alpha_best,
-                       n_reps=1,
-                       seed=100)
-
-exp_ids <- c(result$best_experiment_UFS_id,
-             result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
-em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
-em$ari
-
-# [1] "Best Clustering UFS: cmeans, Best Consensus: kmodes, Experiment id: 610"
-# [1] "Best Clustering NO UFS: pam, Best Consensus: kmodes, Experiment id: 640"
-# [1] "RPClu with UFS"
-# [1] 645
-# [1] 0.13115664 0.36979329 0.05237299
-
-
-
-
-########################################################
-########################################################
-# ALLAML
-########################################################
-########################################################
-
-data(ALLAML)
-
-data <- ALLAML
+data <- leukemia
 
 mean(data$x)
 sd(data$x)
@@ -848,106 +704,26 @@ min(data$x)
 max(data$x)
 
 mean_abs_correlation(data$x)
-# [1] 0.1453
+# 0.1508
 
-dim(data$x)
-# [1]  171 5748
+data$y <- ifelse(data$y == -1, 1, 2)
 
 
 # UFS
 results_UFS <- get_best_top_features(data$x)
 
 result <- run_pipeline(data = data$x,
-                       dataset_name = "ALLAML",
-                       top_features = results_UFS$top_features,
-                       nk = 2,
-                       algorithms = algorithms <- setdiff(algorithms, "pam"),
-                       UFS_method = "Inf-FS2020",
-                       alpha = results_UFS$alpha_best,
-                       n_reps=1,
-                       seed=100)
+             dataset_name = "Leukemia",
+             top_features = results_UFS$top_features,
+             nk = 2,
+             algorithms = algorithms,
+             UFS_method = "Inf-FS2020",
+             alpha = results_UFS$alpha_best,
+             n_reps=1,
+             seed=100)
 
 exp_ids <- c(result$best_experiment_UFS_id,
              result$best_experiment_NO_UFS_id,
-             result$best_experiment_UFS_RPClu_id)
+             result$best_experiment_RPClu)
 em <- calculate_external_metrics_from_ids(exp_ids, as.integer(data$y))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-algorithms = c("km", "sc", "cmeans", "pam")
-
-seed = 101
-
-for (algo in algorithms) {
-  print(algo)
-  result <- consensus_cluster(
-    data$x,
-    nk = 2,
-    p.item = 1,
-    reps = 1,
-    algorithms = algo,
-    progress = FALSE
-  )
-  clusters <- result[, 1, 1, 1]
-  ari <- adjustedRandIndex(clusters, data$y)
-  print(ari)
-}
-
-dice.obj <- dice(
-  data = data$x,
-  nk = 2,
-  algorithms = algorithms,
-)
-dice.obj$indices$trim$alg.keep
-adjustedRandIndex(dice.obj$clusters[,4], as.integer(data$y))
-
-
-calculate_external_metrics(as.vector(dice.obj$clusters[,4]),  as.integer(data$y))
-
-ev_confmat(as.vector(dice.obj$clusters[,4]),  as.integer(data$y))
-
-result <- consensus_cluster(
-  data$x,
-  nk = 2,
-  algorithms = algorithms,
-  progress = TRUE,
-  trim = TRUE,
-  n = 1
-)
-
-data(Meat)
-
-data <- Meat
-seed = 101
-
-for (algo in algorithms) {
-  print(algo)
-  result <- consensus_cluster(
-    data$x,
-    nk = 5,
-    p.item = 1,
-    reps = 1,
-    algorithms = algo,
-    progress = FALSE
-  )
-  clusters <- result[, 1, 1, 1]
-  ari <- adjustedRandIndex(clusters, data$y)
-  print(ari)
-}
-
-
-clusters <- result[, 1, 1, 1]
-adjustedRandIndex(clusters, data$y)
+em$acc

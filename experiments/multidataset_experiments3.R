@@ -7,10 +7,9 @@ UFS_Methods <- list(
   "Inf-FS2020" = TRUE
 )
 
-algorithms = c("nmf", "hc", "diana", "km", "pam", "ap", "sc",
-               "gmm", "block", "som", "cmeans", "hdbscan")
+algorithms = c("km", "gmm", "sc", "cmeans", "pam")
 
-# algorithms = c("gmm")
+
 
 
 
@@ -620,7 +619,7 @@ results_dice = dice(data = data$x[,top_features],
 adjustedRandIndex(results_dice$clusters[, 5], data$y)
 
 
-rere########################################################
+########################################################
 ########################################################
 # lung_cancer
 ########################################################
