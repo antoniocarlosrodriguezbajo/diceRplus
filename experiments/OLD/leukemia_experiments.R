@@ -1,0 +1,2 @@
+library(diceR)
+data("leukemia")
