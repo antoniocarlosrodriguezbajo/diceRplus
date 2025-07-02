@@ -1,2 +1,0 @@
-library(diceR)
-data("leukemia")
