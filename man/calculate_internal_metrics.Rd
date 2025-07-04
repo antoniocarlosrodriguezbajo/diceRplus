@@ -27,7 +27,7 @@ format required by \code{consensus_evaluate()}, assigning dummy labels for repet
 }
 \examples{
 \dontrun{
-library(diceR)
+library(diceRplus)
 data(iris)
 cl_labels <- kmeans(iris[, -5], centers = 3)$cluster
 calculate_internal_metrics(iris[, -5], cl_labels, nk = 3)

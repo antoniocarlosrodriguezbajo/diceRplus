@@ -131,7 +131,7 @@ get_best_top_features <- function(data, minimum=TRUE, range=c(0,0.5)) {
 #'
 #' @examples
 #' \dontrun{
-#' library(diceR)
+#' library(diceRplus)
 #' data(iris)
 #' cl_labels <- kmeans(iris[, -5], centers = 3)$cluster
 #' calculate_internal_metrics(iris[, -5], cl_labels, nk = 3)
@@ -766,7 +766,6 @@ run_RPClu_experiments <- function(data_all = data,
 #' }
 #'
 #' @export
-
 run_pipeline <- function(data,
                          dataset_name,
                          top_features,
@@ -846,4 +845,180 @@ run_pipeline <- function(data,
               best_experiment_NO_UFS_id = best_experiment_NO_UFS_id,
               best_experiment_UFS_RPClu_id = experiment_id
   ))
+}
+
+
+#' Plot Evaluation Metrics vs Number of Features
+#'
+#' Generates line plots for clustering evaluation metrics (internal or external)
+#' across varying numbers of features, facilitating visual comparison of performance.
+#' Metrics are labeled to indicate whether higher values are preferred (+) or lower (-).
+#'
+#' @param data A data frame or matrix (currently not used inside the function).
+#' @param internal_metrics Logical. If `TRUE`, uses internal metrics; otherwise uses external metrics.
+#' @param title Character string. Title of the plot.
+#' @param xAxis_text Character string. Label for the x-axis (usually describing number of features).
+#' @param file_save Character string. Filename for saving the plot (EPS format), saved under `experiments/` directory.
+#'
+#' @return A ggplot object showing metric trends across feature sets.
+#' @export
+#'
+#' @examples
+#' plot_metrics_vs_num_features(
+#'   data = NULL,
+#'   internal_metrics = TRUE,
+#'   title = "Internal Metrics vs Number of Features",
+#'   xAxis_text = "Number of Selected Features",
+#'   file_save = "internal_metrics_plot.eps"
+#' )
+plot_metrics_vs_num_features <- function (data, internal_metrics, title, xAxis_text, file_save) {
+  # Define which metrics are better when higher (+) and which are better when lower (-)
+  positive_metrics <- c("calinski_harabasz", "dunn", "pbm", "tau", "gamma", "silhouette", "ensemble_ari")
+  negative_metrics <- c("c_index", "davies_bouldin", "mcclain_rao", "g_plus", "sd_dis", "ray_turi", "Compactness", "Connectivity")
+
+  # Convert the list of metrics into columns in a dataframe
+  if (internal_metrics) {
+    metrics_df <- do.call(rbind, lapply(experiments_infFS$internal_metrics, as.data.frame))
+  } else {
+    metrics_df <- do.call(rbind, lapply(experiments_infFS$external_metrics, as.data.frame))
+  }
+
+  # Add the 'num_features' column
+  metrics_df$num_features <- experiments_infFS$num_features
+
+  # Convert dataframe to long format for easier plotting
+  long_metrics <- pivot_longer(metrics_df, cols = -num_features, names_to = "metric", values_to = "value")
+
+  # Remove the 's_dbw' metric from the dataframe
+  long_metrics <- long_metrics[long_metrics$metric != "s_dbw", ]
+
+  # Assign labels based on the metric type
+  long_metrics$metric_label <- ifelse(long_metrics$metric %in% positive_metrics,
+                                      paste0(long_metrics$metric, " (+)"),
+                                      ifelse(long_metrics$metric %in% negative_metrics,
+                                             paste0(long_metrics$metric, " (-)"),
+                                             long_metrics$metric))
+
+  # Generate plots with updated labels
+  plot <- ggplot(long_metrics, aes(x = num_features, y = value)) +
+    geom_line() +
+    facet_wrap(~ metric_label, scales = "free_y") +
+    theme_minimal() +
+    labs(title = title,
+         x = xAxis_text,
+         y = "Metric value") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+  ggsave(paste0("experiments/", file_save), plot = plot,
+         width = 8, height = 6, device = "eps")
+  return(plot)
+}
+
+#' Plot Comparison of Evaluation Metrics vs Number of Features
+#'
+#' Compares evaluation metrics (internal or external) across two different datasets
+#' based on the number of selected features. Generates line plots to show trends,
+#' with metric labels indicating whether higher (+) or lower (-) values are preferred.
+#'
+#' @importFrom dplyr bind_rows
+#' @importFrom tidyr pivot_longer
+#'
+#' @param data1 A list containing metric results and `num_features` for the first dataset.
+#' @param legend_data1 Character string. Legend label for the first dataset.
+#' @param data2 A list containing metric results and `num_features` for the second dataset.
+#' @param legend_data2 Character string. Legend label for the second dataset.
+#' @param legend_title Character string. Title for the legend that differentiates the datasets.
+#' @param internal_metrics Logical. If `TRUE`, internal metrics are used; otherwise external metrics.
+#' @param title Character string. Title of the plot.
+#' @param xAxis_text Character string. Label for the x-axis.
+#' @param file_save Character string. Filename to save the plot (EPS format) in the `experiments/` folder.
+#'
+#' @return A ggplot object visualizing selected clustering metrics across features and datasets.
+#' @export
+#'
+#' @examples
+#' plot_metrics_vs_num_features2(
+#'   data1 = list(internal_metrics = list(...), num_features = c(...)),
+#'   legend_data1 = "Method A",
+#'   data2 = list(internal_metrics = list(...), num_features = c(...)),
+#'   legend_data2 = "Method B",
+#'   legend_title = "Method",
+#'   internal_metrics = TRUE,
+#'   title = "Internal Metrics Comparison",
+#'   xAxis_text = "Number of Selected Features",
+#'   file_save = "metrics_comparison.eps"
+#' )
+plot_metrics_vs_num_features2 <- function(data1, legend_data1,
+                                          data2, legend_data2,
+                                          legend_title,
+                                          internal_metrics,
+                                          title, xAxis_text, file_save,
+                                          baseline = NULL) {
+  # Define which metrics are better when higher (+) and which are better when lower (-)
+  positive_metrics <- c("calinski_harabasz", "dunn", "pbm", "tau", "gamma", "silhouette", "ensemble_ari")
+  negative_metrics <- c("c_index", "davies_bouldin", "mcclain_rao", "g_plus", "sd_dis", "ray_turi", "Compactness", "Connectivity")
+
+  # Function to extract metrics from data and add source label
+  process_data <- function(data, source_name) {
+    metrics_df <- if (internal_metrics) {
+      do.call(rbind, lapply(data$internal_metrics, as.data.frame))
+    } else {
+      do.call(rbind, lapply(data$external_metrics, as.data.frame))
+    }
+
+    metrics_df$num_features <- data$num_features
+    metrics_df$source <- source_name  # Label for differentiation
+    return(metrics_df)
+  }
+
+  # Process both datasets with their corresponding legend labels
+  metrics_df1 <- process_data(data1, legend_data1)
+  metrics_df2 <- process_data(data2, legend_data2)
+
+  # Combine datasets
+  combined_metrics <- bind_rows(metrics_df1, metrics_df2)
+
+  # Convert to long format
+  long_metrics <- pivot_longer(combined_metrics, cols = -c(num_features, source), names_to = "metric", values_to = "value")
+
+  # Remove the 's_dbw' metric
+  # long_metrics <- long_metrics[long_metrics$metric != "s_dbw", ]
+  long_metrics <- long_metrics[long_metrics$metric %in% c("silhouette", "davies_bouldin", "calinski_harabasz", "c_index", "ensemble_ari"), ]
+
+
+  # Assign metric labels
+  long_metrics$metric_label <- ifelse(long_metrics$metric %in% positive_metrics,
+                                      paste0(long_metrics$metric, " (+)"),
+                                      ifelse(long_metrics$metric %in% negative_metrics,
+                                             paste0(long_metrics$metric, " (-)"),
+                                             long_metrics$metric))
+
+  # Generate plot with colors for each dataset and custom legend title
+  plot <- ggplot(long_metrics, aes(x = num_features, y = value, color = source)) +
+    geom_line() +
+    facet_wrap(~ metric_label, scales = "free_y") +
+    theme_minimal() +
+    labs(title = title,
+         x = xAxis_text,
+         y = "Metric value",
+         color = legend_title) +  # Custom legend title
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom" )
+
+  if (!is.null(baseline)) {
+    plot <- plot +
+      geom_hline(yintercept = baseline, linetype = "dashed", color = "#1E3A5F") +
+      annotate("text",
+               x = min(combined_metrics$num_features),
+               y = baseline,
+               label = paste0("Baseline = ", baseline),
+               hjust = 0, vjust = -0.5,
+               color = "#1E3A5F", size = 4)
+  }
+
+  # Save plot
+  ggsave(paste0("experiments/", file_save), plot = plot,
+         width = 8, height = 6, device = "eps")
+
+  return(plot)
 }

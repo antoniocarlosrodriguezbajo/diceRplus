@@ -2,7 +2,137 @@
 # Anderlucci's: https://rdrr.io/cran/RPEClust/f/
 # UFS: https://github.com/farhadabedinzadeh/AutoUFSTool
 
+library(tidyr)
+library(ggplot2)
+library(dplyr)
 library(diceRplus)
+
+
+# Calcute internal_metrics based on consensus_evaluate of diceR
+calculate_internal_metrics <- function(data,cluster_labels) {
+  num_labels <- length(cluster_labels)
+
+  # Create structure for consensus_evaluate
+  cc_data <- array(cluster_labels, dim = c(num_labels, 1, 1, 1))
+  row_names <- rownames(data)
+  dimnames(cc_data) <- list(
+    row_names,  # Primer nivel de nombres: nombres de las filas de Meat$x
+    "R1",       # Repetition
+    "RPGMMClu", # Clustering algorithm
+    "5"         # Number of clusters
+  )
+  # Evaluation
+  result_evaluation <- consensus_evaluate(data, cc_data)
+  metrics_df <- result_evaluation$ii[[1]]
+  metrics_list <- lapply(metrics_df[1, -1], function(x) unname(x))
+  return(metrics_list)
+}
+
+plot_metrics_vs_num_features <- function (data, internal_metrics, title, xAxis_text, file_save) {
+  # Define which metrics are better when higher (+) and which are better when lower (-)
+  positive_metrics <- c("calinski_harabasz", "dunn", "pbm", "tau", "gamma", "silhouette", "ensemble_ari")
+  negative_metrics <- c("c_index", "davies_bouldin", "mcclain_rao", "g_plus", "sd_dis", "ray_turi", "Compactness", "Connectivity")
+
+  # Convert the list of metrics into columns in a dataframe
+  if (internal_metrics) {
+    metrics_df <- do.call(rbind, lapply(experiments_infFS$internal_metrics, as.data.frame))
+  } else {
+    metrics_df <- do.call(rbind, lapply(experiments_infFS$external_metrics, as.data.frame))
+  }
+
+  # Add the 'num_features' column
+  metrics_df$num_features <- experiments_infFS$num_features
+
+  # Convert dataframe to long format for easier plotting
+  long_metrics <- pivot_longer(metrics_df, cols = -num_features, names_to = "metric", values_to = "value")
+
+  # Remove the 's_dbw' metric from the dataframe
+  long_metrics <- long_metrics[long_metrics$metric != "s_dbw", ]
+
+  # Assign labels based on the metric type
+  long_metrics$metric_label <- ifelse(long_metrics$metric %in% positive_metrics,
+                                      paste0(long_metrics$metric, " (+)"),
+                                      ifelse(long_metrics$metric %in% negative_metrics,
+                                             paste0(long_metrics$metric, " (-)"),
+                                             long_metrics$metric))
+
+  # Generate plots with updated labels
+  plot <- ggplot(long_metrics, aes(x = num_features, y = value)) +
+    geom_line() +
+    facet_wrap(~ metric_label, scales = "free_y") +
+    theme_minimal() +
+    labs(title = title,
+         x = xAxis_text,
+         y = "Metric value") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+  ggsave(paste0("experiments/", file_save), plot = plot,
+         width = 8, height = 6, device = "eps")
+  return(plot)
+}
+
+plot_metrics_vs_num_features2 <- function(data1, legend_data1,
+                                          data2, legend_data2,
+                                          legend_title,
+                                          internal_metrics,
+                                          title, xAxis_text, file_save) {
+  # Define which metrics are better when higher (+) and which are better when lower (-)
+  positive_metrics <- c("calinski_harabasz", "dunn", "pbm", "tau", "gamma", "silhouette", "ensemble_ari")
+  negative_metrics <- c("c_index", "davies_bouldin", "mcclain_rao", "g_plus", "sd_dis", "ray_turi", "Compactness", "Connectivity")
+
+  # Function to extract metrics from data and add source label
+  process_data <- function(data, source_name) {
+    metrics_df <- if (internal_metrics) {
+      do.call(rbind, lapply(data$internal_metrics, as.data.frame))
+    } else {
+      do.call(rbind, lapply(data$external_metrics, as.data.frame))
+    }
+
+    metrics_df$num_features <- data$num_features
+    metrics_df$source <- source_name  # Label for differentiation
+    return(metrics_df)
+  }
+
+  # Process both datasets with their corresponding legend labels
+  metrics_df1 <- process_data(data1, legend_data1)
+  metrics_df2 <- process_data(data2, legend_data2)
+
+  # Combine datasets
+  combined_metrics <- bind_rows(metrics_df1, metrics_df2)
+
+  # Convert to long format
+  long_metrics <- pivot_longer(combined_metrics, cols = -c(num_features, source), names_to = "metric", values_to = "value")
+
+  # Remove the 's_dbw' metric
+  #long_metrics <- long_metrics[long_metrics$metric != "s_dbw", ]
+  long_metrics <- long_metrics[long_metrics$metric %in% c("silhouette", "davies_bouldin", "calinski_harabasz", "c_index"), ]
+
+
+  # Assign metric labels
+  long_metrics$metric_label <- ifelse(long_metrics$metric %in% positive_metrics,
+                                      paste0(long_metrics$metric, " (+)"),
+                                      ifelse(long_metrics$metric %in% negative_metrics,
+                                             paste0(long_metrics$metric, " (-)"),
+                                             long_metrics$metric))
+
+  # Generate plot with colors for each dataset and custom legend title
+  plot <- ggplot(long_metrics, aes(x = num_features, y = value, color = source)) +
+    geom_line() +
+    facet_wrap(~ metric_label, scales = "free_y") +
+    theme_minimal() +
+    labs(title = title,
+         x = xAxis_text,
+         y = "Metric value",
+         color = legend_title) +  # Custom legend title
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.position = "bottom" )
+
+  # Save plot
+  ggsave(paste0("experiments/", file_save), plot = plot,
+         width = 8, height = 6, device = "eps")
+
+  return(plot)
+}
 
 # Meat dataset
 data(Meat)
@@ -225,7 +355,7 @@ print(ranking_df)
 # Graphics
 
 plotInfFS_internal <- plot_metrics_vs_num_features2(experiments_data_all[filter_500,], "B=500,B*=50",
-                                                    experiments_data_all[filter_1000,], "B=1000,B*=100",
+                                                    experiments_data_all[filter_100,], "B=100,B*=10",
                                                     "RPEClu params",
                                                    internal = TRUE,
                                                    "Number of selected features (Inf-FS) vs internal metrics",
@@ -235,14 +365,20 @@ print(plotInfFS_internal)
 
 
 plotInfFS_external <- plot_metrics_vs_num_features2(experiments_data_all[filter_500,], "B=500,B*=50",
-                                                    experiments_data_all[filter_1000,], "B=1000,B*=100",
+                                                    experiments_data_all[filter_100,], "B=100,B*=10",
                                                    internal = FALSE,
                                                    "RPEClu params",
                                                    "Number of selected features (Inf-FS) vs ARI",
                                                    "Number of features (meat dataset)",
-                                                   "infFS_meat_external.eps",
-                                                   0.32)
+                                                   "infFS_meat_external.eps")
 print(plotInfFS_external)
+
+# Add baseline
+plotInfFS_external <- plotInfFS_external +
+  geom_hline(yintercept = 0.32, linetype = "dashed", color = "#1E3A5F") +  # Línea de referencia
+  annotate("text", x = min(long_metrics$num_features), y = 0.32,
+           label = "Baseline = 0.32", hjust = 0, vjust = -0.5, color = "#1E3A5F", size = 2) +  # Texto más pequeño
+  facet_wrap(~ metric_label, scales = "free_y")
 
 print(plotInfFS_external)
 ggsave("experiments/infFS_meat_external.eps",
